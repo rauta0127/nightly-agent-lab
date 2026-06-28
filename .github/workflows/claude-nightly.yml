@@ -26,7 +26,7 @@ on:
       base_branch:
         description: "Base branch to work from."
         required: false
-        default: "main"
+        default: "develop"
         type: string
       max_turns:
         description: "Maximum agent turns."

@@ -34,10 +34,11 @@ python -m pytest
 - Do not modify unrelated files.
 
 ## Expected Deliverables
-- A branch and pull request implementing the change.
+- A branch off `develop` and a pull request targeting `develop`.
 - Passing tests and lint.
 - Updated README.
 
 ## Notes for Claude
 This is a deliberately small task intended to validate the nightly workflow
-end-to-end. Prefer clarity over cleverness.
+end-to-end. Prefer clarity over cleverness. Use `develop` as the base branch;
+`main` is reserved for stable releases.

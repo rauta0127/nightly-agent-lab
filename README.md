@@ -80,9 +80,16 @@ nal report \
   --output report.md
 ```
 
+## Branch strategy
+
+- **`develop`** — the default base for everyday development and for Claude
+  Nightly runs. New work branches off `develop` and merges back via pull request.
+- **`main`** — the stable branch. Changes reach `main` by merging `develop`
+  once it is known-good.
+
 ## Running CI
 
-CI runs on every pull request and on pushes to `main` (see
+CI runs on every pull request and on pushes to `main` and `develop` (see
 `.github/workflows/ci.yml`). To run the same checks locally:
 
 ```bash

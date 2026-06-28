@@ -13,7 +13,7 @@ task body locally:
 nal new-task \
   --title "Add risk-level option to task generator" \
   --repo "rauta0127/nightly-agent-lab" \
-  --base-branch "main" \
+  --base-branch "develop" \
   --risk-level "low"
 ```
 
@@ -37,8 +37,8 @@ Intended flow once Bedrock access is configured (see
 
 1. Go to **Actions → Claude Nightly (template) → Run workflow**.
 2. Provide inputs:
-   - `task` — the task instructions (or a path to a task file).
-   - `base_branch` — usually `main`.
+   - `task` — the task instructions.
+   - `base_branch` — usually `develop` (the default).
    - `max_turns` — keep this small at first (e.g. `10`–`15`).
 3. Start the run.
 
