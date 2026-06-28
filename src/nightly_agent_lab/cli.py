@@ -54,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--summary", required=True, help="One-line summary of what happened.")
     report.add_argument("--run-url", required=True, help="URL of the GitHub Actions run.")
     report.add_argument("--pr-url", default=None, help="URL of the pull request (optional).")
+    report.add_argument(
+        "--output",
+        default=None,
+        help="Write the report to this file instead of stdout (optional).",
+    )
     report.set_defaults(func=_cmd_report)
 
     return parser
@@ -80,8 +85,15 @@ def _cmd_report(args: argparse.Namespace) -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    output = args.func(args)
-    sys.stdout.write(output)
+    text = args.func(args)
+
+    # Only `report` defines --output; other subcommands always print to stdout.
+    output_path = getattr(args, "output", None)
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(text)
+    else:
+        sys.stdout.write(text)
     return 0
 
 
