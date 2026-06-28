@@ -8,9 +8,15 @@
 #   Repository Variables:
 #     ENABLE_CLAUDE_NIGHTLY   - set to "true" to enable the Claude job
 #     AWS_REGION              - e.g. us-east-1
+#     BEDROCK_MODEL_ID        - Bedrock model id, referenced as
+#                               ${{ vars.BEDROCK_MODEL_ID }} (never hard-coded here)
 #   Repository Secrets:
 #     AWS_ROLE_TO_ASSUME      - IAM role ARN for GitHub OIDC -> Bedrock
 #     SLACK_WEBHOOK_URL       - (optional) Slack incoming webhook for notifications
+#
+# IMPORTANT: the AWS OIDC trust policy is scoped to the `develop` ref, so any run
+# that needs AWS MUST be dispatched with `develop` selected as the workflow ref
+# (not from a feature/experiment branch). See the docs below.
 #
 # See docs/bedrock-github-actions-setup.md and docs/nightly-operation.md.
 
@@ -29,10 +35,16 @@ on:
         default: "develop"
         type: string
       max_turns:
-        description: "Maximum agent turns."
+        description: "Maximum agent turns (keep small while validating)."
         required: false
-        default: "15"
+        default: "8"
         type: string
+
+# Avoid overlapping nightly runs on the same ref. Do not cancel an in-progress
+# run, so a manual run is never interrupted mid-flight.
+concurrency:
+  group: claude-nightly-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -42,6 +54,7 @@ jobs:
   # Without ENABLE_CLAUDE_NIGHTLY == 'true', the run safely skips.
   guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
     steps:
@@ -54,13 +67,19 @@ jobs:
             echo "ENABLE_CLAUDE_NIGHTLY is not 'true'; skipping Claude run." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  # Phase 2A stage: this job is the future "read-only Bedrock smoke" job.
+  # Permissions are intentionally READ-ONLY here. `--allowedTools` is additive
+  # over the action's base tools and CANNOT by itself disable Edit/Write/commit;
+  # read-only safety is enforced by `contents: read` (no write) plus a post-run
+  # `git diff --exit-code` assertion. `contents: write` is only granted later in
+  # the write-enabled stage (Phase 2D), in a separate change.
   claude:
     needs: guard
     if: needs.guard.outputs.enabled == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
-      contents: write       # create branches / commits
-      pull-requests: write  # open pull requests
+      contents: read        # read-only smoke: this is what actually blocks edits/commits
       id-token: write       # GitHub OIDC -> AWS
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +88,9 @@ jobs:
 
       # Exchange the GitHub OIDC token for short-lived AWS credentials.
       # No long-lived AWS keys are stored in this repo.
+      #
+      # NOTE: the IAM trust policy is scoped to the `develop` ref, so this step
+      # only succeeds when the workflow is dispatched from `develop`.
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -77,17 +99,22 @@ jobs:
 
       # Scaffold of the intended Claude Code action invocation against Bedrock.
       # Kept commented until Bedrock access and IAM are configured, so that an
-      # accidental enable cannot make real model calls.
+      # accidental enable cannot make real model calls (Phase 2C uncomments this).
       #
-      # - name: Run Claude Code
+      # When uncommented, the model id comes from a Repository Variable
+      # (vars.BEDROCK_MODEL_ID) and is NEVER hard-coded here. The read-only tool
+      # set is defense-in-depth only — the real guarantee is `contents: read`
+      # plus the `git diff --exit-code` step below.
+      #
+      # - name: Run Claude Code (read-only smoke)
       #   uses: anthropics/claude-code-action@v1
       #   with:
       #     use_bedrock: "true"
       #     prompt: ${{ inputs.task }}
       #     claude_args: >-
       #       --max-turns ${{ inputs.max_turns }}
-      #       --model anthropic.<REPLACE_WITH_BEDROCK_MODEL_ID>
-      #       --allowedTools "Bash(python -m ruff check .),Bash(python -m pytest),Edit,Read,Write"
+      #       --model ${{ vars.BEDROCK_MODEL_ID }}
+      #       --allowedTools "Read,Bash(python -m ruff check .),Bash(python -m pytest)"
       #   env:
       #     AWS_REGION: ${{ vars.AWS_REGION }}
 
@@ -97,6 +124,22 @@ jobs:
           echo "Task input length: ${#TASK}" >> "$GITHUB_STEP_SUMMARY"
         env:
           TASK: ${{ inputs.task }}
+
+      # Read-only safety assertion: fail the run if the working tree changed at
+      # all. `git diff --exit-code` covers tracked (modified/staged) files, while
+      # `git status --porcelain` also catches untracked/new files — so both
+      # tracked and untracked changes are detected. This guarantees the smoke
+      # stage is non-mutating regardless of what tools the model was nominally
+      # allowed. (No-op today since the action is commented out and nothing
+      # changes files.)
+      - name: Assert no file changes (read-only smoke)
+        run: |
+          git diff --exit-code
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Working tree is not clean (tracked or untracked changes detected):"
+            git status --porcelain
+            exit 1
+          fi
 
       # Optional Slack notification.
       # secrets cannot be referenced in `if:`, so gate inside the shell instead:
