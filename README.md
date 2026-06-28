@@ -69,6 +69,17 @@ nal report \
   --pr-url "https://github.com/example/repo/pull/42"
 ```
 
+By default the report is printed to stdout. Use `--output` to write it to a
+file instead:
+
+```bash
+nal report \
+  --status success \
+  --run-url "https://github.com/example/repo/actions/runs/123" \
+  --summary "Implemented initial CLI scaffold" \
+  --output report.md
+```
+
 ## Running CI
 
 CI runs on every pull request and on pushes to `main` (see
