@@ -82,6 +82,10 @@ This is a **public** repository. Therefore:
 - Reference secrets only via `${{ secrets.* }}` / `${{ vars.* }}` in workflows.
 - Pull requests from forks do not receive secrets by design — keep it that way.
 - Review the Actions logs after a run to confirm no sensitive data leaked.
+- The AWS **account ID is not treated as a secret** by
+  `aws-actions/configure-aws-credentials`, so it can otherwise surface in logs.
+  The workflow sets `mask-aws-account-id: true` on the credentials step to keep it
+  out of the logs of this public repo.
 
 ## IAM role requirements (high level)
 

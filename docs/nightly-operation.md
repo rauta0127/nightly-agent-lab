@@ -72,7 +72,10 @@ After a nightly run:
 2. Review the pull request (if one was opened) as you would any human PR.
 3. Confirm acceptance criteria are met.
 4. Check that CI (lint + tests) is green.
-5. Confirm no secrets or sensitive data appear in the diff or logs.
+5. Confirm no secrets or sensitive data appear in the diff or logs. After a
+   Phase 2B dry-run in particular, check the `Configure AWS credentials` step's
+   logs for any leaked **AWS account ID**, **role ARN**, or **secret values** —
+   none should appear (the step sets `mask-aws-account-id: true`).
 6. Generate a report for your records:
 
    ```bash
