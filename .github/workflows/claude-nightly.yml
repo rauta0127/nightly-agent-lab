@@ -96,6 +96,9 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ vars.AWS_REGION }}
+          # The AWS account ID is NOT treated as a secret by this action, so it
+          # can otherwise appear in logs. This is a public repo, so mask it.
+          mask-aws-account-id: true
 
       # Scaffold of the intended Claude Code action invocation against Bedrock.
       # Kept commented until Bedrock access and IAM are configured, so that an
