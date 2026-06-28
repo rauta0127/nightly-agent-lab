@@ -32,15 +32,35 @@ The Claude Nightly workflow is a **manual-only template** today
 (`workflow_dispatch`) and will **skip** unless `ENABLE_CLAUDE_NIGHTLY` is set to
 `true` in repository variables.
 
-Intended flow once Bedrock access is configured (see
-`docs/bedrock-github-actions-setup.md`):
+> **Phase 2A status:** the real model call is **not enabled yet**. The
+> `claude-code-action` step is still commented out, so even with the gate open
+> the workflow runs the placeholder only and makes **no Bedrock call**.
+
+We enable Bedrock in safe, ordered stages — do not skip ahead:
+
+1. **Guard skip** — with `ENABLE_CLAUDE_NIGHTLY` unset/`false`, dispatch the
+   workflow and confirm the Claude job is skipped.
+2. **OIDC check** — set `ENABLE_CLAUDE_NIGHTLY=true` and dispatch **from
+   `develop`**. First without AWS configured (expect `Configure AWS credentials`
+   to fail), then after AWS OIDC/IAM is configured (expect it to succeed, still
+   no model call).
+3. **Read-only smoke** — once the action is uncommented for read-only use, run a
+   trivial task. The job runs with `contents: read` and ends with
+   `git diff --exit-code`, so it **fails if any file was modified** — proving the
+   run was non-mutating.
+4. **Write-enabled run** — only after the smoke is clean, a later change allows
+   `Write,Edit` and pushes results to a `nightly/*` branch (a human opens the PR).
+
+When dispatching:
 
 1. Go to **Actions → Claude Nightly (template) → Run workflow**.
-2. Provide inputs:
+2. Select **`develop`** as the branch to run from (required: the OIDC trust is
+   scoped to the `develop` ref).
+3. Provide inputs:
    - `task` — the task instructions.
    - `base_branch` — usually `develop` (the default).
-   - `max_turns` — keep this small at first (e.g. `10`–`15`).
-3. Start the run.
+   - `max_turns` — keep this small at first (default `8`).
+4. Start the run.
 
 Automatic scheduling is intentionally **not** enabled yet.
 

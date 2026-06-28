@@ -23,10 +23,14 @@ of the real values in this repo.
 
 ### Repository Variables
 
-| Name                    | Purpose                                              |
-| ----------------------- | ---------------------------------------------------- |
-| `ENABLE_CLAUDE_NIGHTLY` | Set to `true` to allow the Claude job to run.        |
-| `AWS_REGION`            | AWS region hosting Bedrock, e.g. `us-east-1`.        |
+| Name                    | Purpose                                                    |
+| ----------------------- | ---------------------------------------------------------- |
+| `ENABLE_CLAUDE_NIGHTLY` | Set to `true` to allow the Claude job to run.              |
+| `AWS_REGION`            | AWS region hosting Bedrock, e.g. `us-east-1`.              |
+| `BEDROCK_MODEL_ID`      | Bedrock model id, used via `${{ vars.BEDROCK_MODEL_ID }}`. |
+
+The model id is referenced as a variable (not hard-coded) so it can change
+without editing the workflow. See "Bedrock model" below for what to confirm.
 
 ### Repository Secrets
 
@@ -41,6 +45,27 @@ Placeholder values (illustrative only — replace in repo settings, never commit
 AWS_ROLE_TO_ASSUME = arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>
 AWS_REGION         = <REGION>
 ```
+
+## Bedrock model
+
+Set `BEDROCK_MODEL_ID` to the exact Bedrock model id you intend to use, and
+confirm:
+
+- account-level **model access** is granted for that model in `AWS_REGION`, and
+- whether the model is served via a **cross-region inference profile** (this
+  affects which resource ARNs the IAM policy must allow — see below).
+
+The workflow uses `${{ vars.BEDROCK_MODEL_ID }}`; do not hard-code a model id in
+the YAML.
+
+## Dispatching from `develop`
+
+The OIDC trust policy is scoped to the `develop` ref (see below). The OIDC `sub`
+claim reflects the **ref the workflow runs on**, not the `base_branch` input.
+Therefore any run that needs AWS **must be dispatched with `develop` selected as
+the workflow ref** in the Actions UI. Do not run it from a `feature/*` or
+`experiment/*` branch — merge the workflow change into `develop` first, then
+dispatch from `develop`.
 
 ## Runners
 
@@ -60,8 +85,34 @@ This is a **public** repository. Therefore:
 
 ## IAM role requirements (high level)
 
-The assumed role needs a trust policy for the GitHub OIDC provider (scoped to
-this repository) and a permissions policy allowing the relevant
-`bedrock:InvokeModel*` actions for the model(s) you intend to use. The concrete
-policy documents are configured in your AWS account and are intentionally not
-stored here.
+The assumed role needs a **trust policy** for the GitHub OIDC provider and a
+least-privilege **permissions policy**. The concrete documents live in your AWS
+account and are intentionally not stored here (placeholders only).
+
+### Trust policy (scoped to repo + `develop`)
+
+Condition the trust on:
+
+- `token.actions.githubusercontent.com:aud` = `sts.amazonaws.com`
+- `token.actions.githubusercontent.com:sub` =
+  `repo:rauta0127/nightly-agent-lab:ref:refs/heads/develop`
+
+This blocks other repositories, branches, and forks from assuming the role.
+(If a GitHub Environment is adopted later, the `sub` becomes
+`repo:rauta0127/nightly-agent-lab:environment:<ENV>` and the trust policy must be
+updated accordingly.)
+
+### Permissions policy (least privilege)
+
+Allow only `bedrock:InvokeModel` (and `bedrock:InvokeModelWithResponseStream` if
+streaming is used). Scope the **resource ARNs as narrowly as the selected
+model/profile allows**:
+
+- For a direct model, the single model ARN may suffice.
+- For a **cross-region inference profile**, you must allow the profile ARN **plus
+  the underlying foundation-model ARNs across the associated regions**, and model
+  access must be enabled in each of those regions.
+
+Start with the minimal ARN set the chosen model/profile actually needs. **Never**
+use `bedrock:*` or resource `*` in steady state. If a broader scope is needed
+briefly for diagnosis, revert it immediately afterward.
