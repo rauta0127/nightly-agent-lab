@@ -1,0 +1,115 @@
+# Claude Nightly (TEMPLATE / NOT YET ENABLED)
+#
+# This is a SCAFFOLD for a future unattended Claude Code run against Amazon
+# Bedrock. It is intentionally manual-only (workflow_dispatch) and is gated so
+# that it safely SKIPS unless the repository explicitly opts in.
+#
+# Before this can run for real you must configure (values are NEVER committed):
+#   Repository Variables:
+#     ENABLE_CLAUDE_NIGHTLY   - set to "true" to enable the Claude job
+#     AWS_REGION              - e.g. us-east-1
+#   Repository Secrets:
+#     AWS_ROLE_TO_ASSUME      - IAM role ARN for GitHub OIDC -> Bedrock
+#     SLACK_WEBHOOK_URL       - (optional) Slack incoming webhook for notifications
+#
+# See docs/bedrock-github-actions-setup.md and docs/nightly-operation.md.
+
+name: Claude Nightly (template)
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task instructions for Claude."
+        required: true
+        type: string
+      base_branch:
+        description: "Base branch to work from."
+        required: false
+        default: "main"
+        type: string
+      max_turns:
+        description: "Maximum agent turns."
+        required: false
+        default: "15"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # Gate job: decides whether the Claude run should proceed.
+  # Without ENABLE_CLAUDE_NIGHTLY == 'true', the run safely skips.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ vars.ENABLE_CLAUDE_NIGHTLY }}" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "ENABLE_CLAUDE_NIGHTLY is not 'true'; skipping Claude run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  claude:
+    needs: guard
+    if: needs.guard.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create branches / commits
+      pull-requests: write  # open pull requests
+      id-token: write       # GitHub OIDC -> AWS
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_branch }}
+
+      # Exchange the GitHub OIDC token for short-lived AWS credentials.
+      # No long-lived AWS keys are stored in this repo.
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Scaffold of the intended Claude Code action invocation against Bedrock.
+      # Kept commented until Bedrock access and IAM are configured, so that an
+      # accidental enable cannot make real model calls.
+      #
+      # - name: Run Claude Code
+      #   uses: anthropics/claude-code-action@v1
+      #   with:
+      #     use_bedrock: "true"
+      #     prompt: ${{ inputs.task }}
+      #     claude_args: >-
+      #       --max-turns ${{ inputs.max_turns }}
+      #       --model anthropic.<REPLACE_WITH_BEDROCK_MODEL_ID>
+      #       --allowedTools "Bash(python -m ruff check .),Bash(python -m pytest),Edit,Read,Write"
+      #   env:
+      #     AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Placeholder
+        run: |
+          echo "Claude Nightly template ran (no model call yet)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Task input length: ${#TASK}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          TASK: ${{ inputs.task }}
+
+      # Optional Slack notification.
+      # secrets cannot be referenced in `if:`, so gate inside the shell instead:
+      # skip when SLACK_WEBHOOK_URL is empty. The webhook URL is never logged.
+      - name: Notify Slack (optional)
+        if: ${{ always() }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL not set; skipping Slack notification."
+            exit 0
+          fi
+          curl -sS -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"Claude Nightly (template) finished: ${{ job.status }}\"}" \
+            "$SLACK_WEBHOOK_URL"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
